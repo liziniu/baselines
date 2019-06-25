@@ -91,11 +91,11 @@ class RolloutWorker:
             o_new = obs_dict_new['observation']
             ag_new = obs_dict_new['achieved_goal']
             success = np.array([i.get('is_success', 0.0) for i in info])
-
             if any(done):
                 # here we assume all environments are done is ~same number of steps, so we terminate rollouts whenever any of the envs returns done
                 # trick with using vecenvs is not to add the obs from the environments that are "done", because those are already observations
                 # after a reset
+                assert t == self.T-1
                 break
 
             for i, info_dict in enumerate(info):

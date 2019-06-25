@@ -78,8 +78,8 @@ class Model(object):
             step_model = policy(nbatch=nenvs, nsteps=1, observ_placeholder=step_ob_placeholder, sess=sess)
             train_model = policy(nbatch=nbatch, nsteps=nsteps, observ_placeholder=train_ob_placeholder, sess=sess)
 
-
-        params = find_trainable_variables("acer_model")
+        variables = find_trainable_variables
+        params = variables("acer_model")
         print("Params {}".format(len(params)))
         for var in params:
             print(var)

@@ -13,7 +13,9 @@ from baselines.common.cmd_util import common_arg_parser, parse_unknown_args, mak
 from baselines.common.tf_util import get_session
 from baselines import logger
 from importlib import import_module
-
+import os
+import datetime
+import env.fetch_advanced
 try:
     from mpi4py import MPI
 except ImportError:
@@ -70,6 +72,16 @@ def train(args, extra_args):
     else:
         if alg_kwargs.get('network') is None:
             alg_kwargs['network'] = get_default_network(env_type)
+
+    if args.alg == 'her' and 'FetchReach' in args.env:
+        from copy import deepcopy
+        eval_env = args.env.split("-")
+        eval_env = eval_env[0] + "-" + eval_env[-1]
+        logger.info('eval_env:{}'.format(eval_env))
+        eval_args = deepcopy(args)
+        eval_args.env = eval_env
+        eval_env = build_env(eval_args)
+        alg_kwargs['eval_env'] = eval_env
 
     print('Training {} on {}:{} with arguments \n{}'.format(args.alg, env_type, env_id, alg_kwargs))
 
@@ -192,23 +204,21 @@ def parse_cmdline_kwargs(args):
     return {k: parse(v) for k,v in parse_unknown_args(args).items()}
 
 
-
-def main(args):
+def main(args, extra_args):
     # configure logger, disable logging in child MPI processes (with rank > 0)
-
-    arg_parser = common_arg_parser()
-    args, unknown_args = arg_parser.parse_known_args(args)
-    extra_args = parse_cmdline_kwargs(unknown_args)
-
     if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
         rank = 0
-        logger.configure()
+        dir = os.path.join("/Users/liziniu/openai", "{}-{}-{}".format(
+            args.alg, args.env, datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S-%f")))
+        logger.configure(dir=dir)
     else:
         logger.configure(format_strs=[])
         rank = MPI.COMM_WORLD.Get_rank()
 
     model, env = train(args, extra_args)
 
+    if args.alg == 'her':
+        args.save_path = args.save_path or os.path.join(logger.get_dir(), "model")
     if args.save_path is not None and rank == 0:
         save_path = osp.expanduser(args.save_path)
         model.save(save_path)
@@ -241,4 +251,23 @@ def main(args):
     return model
 
 if __name__ == '__main__':
-    main(sys.argv)
+    from copy import deepcopy
+    from multiprocessing import Process
+    args = sys.argv
+    arg_parser = common_arg_parser()
+    args, unknown_args = arg_parser.parse_known_args(args)
+    extra_args = parse_cmdline_kwargs(unknown_args)
+    list_p = []
+    for i in range(args.num_exp):
+        _args = deepcopy(args)
+        _args.seed = _args.seed or 2019 + i
+        p = Process(target=main, args=(args, extra_args))
+        list_p.append(p)
+
+    for i, p in enumerate(list_p):
+        p.start()
+        print("Process {} start".format(i))
+
+    for i, p in enumerate(list_p):
+        p.join()
+        print("Process {} end".format(i))
